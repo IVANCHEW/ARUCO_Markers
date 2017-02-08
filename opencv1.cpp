@@ -8,7 +8,15 @@
 #include <time.h>
 #include <stdio.h>
 
+#ifdef __APPLE__
+#include <GLUT/glut.h>
+#else
+#include <GL/glut.h>
+#endif
+
 cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_250);
+cv::Mat camera_matrix;
+cv::Mat dist_coeffs;
 
 static void calcBoardCornerPositions(cv::Size boardSize, float squareSize, std::vector<cv::Point3f>& corners, std::string patternType){
     corners.clear();
@@ -94,7 +102,6 @@ void calibrateCamera(cv::Mat& camera_matrix, cv::Mat& dist_coeffs, bool show_boa
 	
 }
 
-//~ void arucoPoseEstimation(cv::Mat& input_image, int id, std::vector<cv::Mat>& tvec, std::vector<cv::Mat>& rvec, cv::Mat& mtx, cv::Mat& dist){
 void arucoPoseEstimation(cv::Mat& input_image, int id, cv::Mat& tvec, cv::Mat& rvec, cv::Mat& mtx, cv::Mat& dist){
 	// Contextual Parameters
 	float aruco_square_size = 0.082;
@@ -110,7 +117,7 @@ void arucoPoseEstimation(cv::Mat& input_image, int id, cv::Mat& tvec, cv::Mat& r
 		
 		cv::aruco::drawDetectedMarkers(input_image, marker_corners, marker_ids);
 		for (int i = 0 ; i < marker_ids.size() ; i++){
-			std::cout << "Marker IDs found: " << marker_ids[i] << std::endl;
+			//~ std::cout << "Marker IDs found: " << marker_ids[i] << std::endl;
 			if (marker_ids[i] == id){
 				std::vector< std::vector<cv::Point2f> > single_corner(1);
 				single_corner[0] = marker_corners[i];
@@ -120,40 +127,109 @@ void arucoPoseEstimation(cv::Mat& input_image, int id, cv::Mat& tvec, cv::Mat& r
 		}
 	}
 	else{
-		std::cout << "No markers detected" << std::endl;
+		//~ std::cout << "No markers detected" << std::endl;
 	}
+}
+
+void changeSize(int w, int h) {
+
+	// Prevent a divide by zero, when window is too short
+	// (you cant make a window of zero width).
+	if (h == 0)
+		h = 1;
+
+	float ratio =  w * 1.0 / h;
+
+	// Use the Projection Matrix
+	glMatrixMode(GL_PROJECTION);
+
+	// Reset Matrix
+	glLoadIdentity();
+
+	// Set the viewport to be the entire window
+	glViewport(0, 0, w, h);
+
+	// Set the correct perspective.
+	gluPerspective(45.0f, ratio, 0.1f, 100.0f);
+
+	// Get Back to the Modelview
+	glMatrixMode(GL_MODELVIEW);
+}
+
+float angle = 0.0f;
+
+void renderScene(void) {
+
+	// Clear Color and Depth Buffers
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	// Reset transformations
+	glLoadIdentity();
+	// Set the camera
+	gluLookAt(	0.0f, 0.0f, 10.0f,
+				0.0f, 0.0f,  0.0f,
+				0.0f, 1.0f,  0.0f);
+
+	glRotatef(angle, 0.0f, 1.0f, 0.0f);
+
+	glBegin(GL_TRIANGLES);
+		glVertex3f(-2.0f,-2.0f, 0.0f);
+		glVertex3f( 2.0f, 0.0f, 0.0);
+		glVertex3f( 0.0f, 2.0f, 0.0);
+	glEnd();
+
+	angle+=0.1f;
+
+	glutSwapBuffers();
 }
 
 int main( int argc, char** argv )
 {
+	// Contextual Parameters
 	int target_id = 1;
 	
+	//~ // init GLUT and create window
+	//~ glutInit(&argc, argv);
+	//~ glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
+	//~ glutInitWindowPosition(100,100);
+	//~ glutInitWindowSize(320,320);
+	//~ glutCreateWindow("Lighthouse3D- GLUT Tutorial");
+
+	//~ // register callbacks
+	//~ glutDisplayFunc(renderScene);
+	//~ glutReshapeFunc(changeSize);
+	//~ glutIdleFunc(renderScene);
+
+	//~ // enter GLUT event processing cycle
+	//~ glutMainLoop();
+	
 	// STEP 1: CALIBRATE CAMERA ACCORDING TO PRE-LOADED IMAGES
-	cv::Mat camera_matrix = cv::Mat::eye(3, 3, CV_64F);
-	cv::Mat dist_coeffs = cv::Mat::zeros(8, 1, CV_64F);
+	camera_matrix = cv::Mat::eye(3, 3, CV_64F);
+	dist_coeffs = cv::Mat::zeros(8, 1, CV_64F);
 	//fixed aspect ratio
 	camera_matrix.at<double>(0,0) = 1.0;
 	calibrateCamera(camera_matrix, dist_coeffs, false);
 	std::cout << "Calibration Matrix: " << std::endl << camera_matrix << std::endl;
 	
-	//STEP 2: ESTIMATE ARUCO POSE
-	cv::Mat rvec;
-	cv::Mat tvec;
-	//~ std::vector< cv::Mat > rvec, tvec;
-	cv::Mat image;
-	image = cv::imread("test/capture0.jpg", CV_LOAD_IMAGE_COLOR);   // Read the file
-	std::cout << "Begin pose estimation" << std::endl;
-	arucoPoseEstimation(image, target_id, tvec, rvec, camera_matrix, dist_coeffs);
-
-	if(! image.data )                              // Check for invalid input
-	{
-			std::cout <<  "Could not open or find the image" << std::endl ;
-			return -1;
+	//STEP 2: LOAD CAMERA 
+	cv::VideoCapture inputVideo;
+	inputVideo.open(0);
+	int framecount = 0;
+	while (inputVideo.grab()) {
+		cv::Mat image;
+		inputVideo.retrieve(image);
+		cv::Mat rvec;
+		cv::Mat tvec;
+		
+		//STEP 3: ESTIMATE POSE
+		arucoPoseEstimation(image, target_id, tvec, rvec, camera_matrix, dist_coeffs);
+		std::cout << framecount << std::endl;
+		framecount++;
+		cv::imshow("out", image);
+    char key = (char) cv::waitKey(1);
+    if (key == 27)
+        break;
 	}
-
-	cv::namedWindow( "Display window", cv::WINDOW_AUTOSIZE );// Create a window for display.
-	cv::imshow( "Display window", image );                   // Show our image inside it.
-	cv::waitKey(0);                                          // Wait for a keystroke in the window
 	
 	return 0;
 }

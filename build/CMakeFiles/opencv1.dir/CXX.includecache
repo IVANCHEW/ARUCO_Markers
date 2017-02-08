@@ -25,6 +25,10 @@ time.h
 -
 stdio.h
 -
+GLUT/glut.h
+-
+GL/glut.h
+-
 
 /opt/ros/kinetic/include/opencv-3.1.0-dev/opencv/cxcore.h
 opencv2/core/core_c.h
