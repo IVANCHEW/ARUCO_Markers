@@ -27,6 +27,10 @@ stdio.h
 -
 thread
 -
+math.h
+-
+cmath
+-
 GLUT/glut.h
 -
 GL/glut.h
