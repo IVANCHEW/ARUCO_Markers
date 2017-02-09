@@ -7,6 +7,7 @@
 #include <sstream>
 #include <time.h>
 #include <stdio.h>
+#include <thread>
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -14,9 +15,18 @@
 #include <GL/glut.h>
 #endif
 
+// Contextual Parameters
+int target_id = 1;
+const int mySizes[3]={0,0,0};
 cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_250);
 cv::Mat camera_matrix;
 cv::Mat dist_coeffs;
+float angle = 0.0f;
+float triangle_size = 0.082;
+int framecount = 0;
+cv::Mat graphic_tvec;
+cv::Mat graphic_rvec;
+bool transformation_ready = false;
 
 static void calcBoardCornerPositions(cv::Size boardSize, float squareSize, std::vector<cv::Point3f>& corners, std::string patternType){
     corners.clear();
@@ -102,10 +112,11 @@ void calibrateCamera(cv::Mat& camera_matrix, cv::Mat& dist_coeffs, bool show_boa
 	
 }
 
-void arucoPoseEstimation(cv::Mat& input_image, int id, cv::Mat& tvec, cv::Mat& rvec, cv::Mat& mtx, cv::Mat& dist){
+bool arucoPoseEstimation(cv::Mat& input_image, int id, cv::Mat& tvec, cv::Mat& rvec, cv::Mat& mtx, cv::Mat& dist, bool draw_axis){
 	// Contextual Parameters
+	//~ std::cout << "Pose estimation called" << std::endl;
 	float aruco_square_size = 0.082;
-	
+	bool marker_found = false;
 	std::vector< int > marker_ids;
 	std::vector< std::vector<cv::Point2f> > marker_corners, rejected_candidates;
 	cv::Mat gray;
@@ -114,21 +125,26 @@ void arucoPoseEstimation(cv::Mat& input_image, int id, cv::Mat& tvec, cv::Mat& r
 	cv::aruco::detectMarkers(gray, dictionary, marker_corners, marker_ids);	
 	
 	if (marker_ids.size() > 0){
-		
-		cv::aruco::drawDetectedMarkers(input_image, marker_corners, marker_ids);
 		for (int i = 0 ; i < marker_ids.size() ; i++){
 			//~ std::cout << "Marker IDs found: " << marker_ids[i] << std::endl;
 			if (marker_ids[i] == id){
 				std::vector< std::vector<cv::Point2f> > single_corner(1);
 				single_corner[0] = marker_corners[i];
 				cv::aruco::estimatePoseSingleMarkers(single_corner, aruco_square_size, mtx, dist, rvec, tvec);
-				cv::aruco::drawAxis(input_image, mtx, dist, rvec, tvec, aruco_square_size/2);
+				if (draw_axis){
+					cv::aruco::drawDetectedMarkers(input_image, marker_corners, marker_ids);
+					cv::aruco::drawAxis(input_image, mtx, dist, rvec, tvec, aruco_square_size/2);
+				}
+				//~ std::cout << "Marker found : aruco pose estimation" << std::endl;
+				marker_found = true;
 			}
 		}
 	}
 	else{
 		//~ std::cout << "No markers detected" << std::endl;
 	}
+	
+	return marker_found;
 }
 
 void changeSize(int w, int h) {
@@ -156,8 +172,6 @@ void changeSize(int w, int h) {
 	glMatrixMode(GL_MODELVIEW);
 }
 
-float angle = 0.0f;
-
 void renderScene(void) {
 
 	// Clear Color and Depth Buffers
@@ -166,16 +180,21 @@ void renderScene(void) {
 	// Reset transformations
 	glLoadIdentity();
 	// Set the camera
-	gluLookAt(	0.0f, 0.0f, 10.0f,
+	gluLookAt(	0.0f, 0.0f, 1.0f,
 				0.0f, 0.0f,  0.0f,
 				0.0f, 1.0f,  0.0f);
 
-	glRotatef(angle, 0.0f, 1.0f, 0.0f);
-
+	//~ glRotatef(angle, 0.0f, 1.0f, 0.0f);
+	cv::Mat tvec;
+	if (transformation_ready==true){		
+		tvec = graphic_tvec;
+		glTranslatef(tvec.at<double>(0), -tvec.at<double>(1), -tvec.at<double>(2));
+	}
+	
 	glBegin(GL_TRIANGLES);
-		glVertex3f(-2.0f,-2.0f, 0.0f);
-		glVertex3f( 2.0f, 0.0f, 0.0);
-		glVertex3f( 0.0f, 2.0f, 0.0);
+		glVertex3f(-triangle_size,-triangle_size, 0.0f);
+		glVertex3f( triangle_size, 0.0f, 0.0);
+		glVertex3f( 0.0f, triangle_size, 0.0);
 	glEnd();
 
 	angle+=0.1f;
@@ -183,27 +202,46 @@ void renderScene(void) {
 	glutSwapBuffers();
 }
 
+// THREAD FUNCTIONS
+void *start_gl_main(void *threadid){
+	long tid;
+  tid = (long)threadid;
+  std::cout << "Start gl main thread id : " << tid << std::endl;
+	glutMainLoop();
+	pthread_exit(NULL);
+}
+
+void *start_cv_main(void *threadid){
+	cv::VideoCapture inputVideo;
+	inputVideo.open(0);
+	bool marker_found;
+	while (inputVideo.grab()) {
+		cv::Mat image;
+		cv::Mat rvec;
+		cv::Mat tvec;
+		inputVideo.retrieve(image);
+		marker_found = false;
+		marker_found = arucoPoseEstimation(image, target_id, tvec, rvec, camera_matrix, dist_coeffs, true);
+		if (marker_found==true){
+			//~ std::cout << "Marker found" << std::endl;
+			//~ std::cout << tvec << std::endl;
+			//~ std::cout << tvec.at<double>(0) << std::endl;
+			transformation_ready = true;
+			graphic_tvec = tvec;
+		}
+		cv::imshow("out", image);
+		char key = (char) cv::waitKey(1);
+	  if (key == 27){
+			break;
+			inputVideo.release();
+			pthread_exit(NULL);
+		}
+	}
+}
+
 int main( int argc, char** argv )
 {
-	// Contextual Parameters
-	int target_id = 1;
-	
-	//~ // init GLUT and create window
-	//~ glutInit(&argc, argv);
-	//~ glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
-	//~ glutInitWindowPosition(100,100);
-	//~ glutInitWindowSize(320,320);
-	//~ glutCreateWindow("Lighthouse3D- GLUT Tutorial");
-
-	//~ // register callbacks
-	//~ glutDisplayFunc(renderScene);
-	//~ glutReshapeFunc(changeSize);
-	//~ glutIdleFunc(renderScene);
-
-	//~ // enter GLUT event processing cycle
-	//~ glutMainLoop();
-	
-	// STEP 1: CALIBRATE CAMERA ACCORDING TO PRE-LOADED IMAGES
+	// VISION STEP 1: CALIBRATE CAMERA ACCORDING TO PRE-LOADED IMAGES
 	camera_matrix = cv::Mat::eye(3, 3, CV_64F);
 	dist_coeffs = cv::Mat::zeros(8, 1, CV_64F);
 	//fixed aspect ratio
@@ -211,26 +249,58 @@ int main( int argc, char** argv )
 	calibrateCamera(camera_matrix, dist_coeffs, false);
 	std::cout << "Calibration Matrix: " << std::endl << camera_matrix << std::endl;
 	
-	//STEP 2: LOAD CAMERA 
-	cv::VideoCapture inputVideo;
-	inputVideo.open(0);
-	int framecount = 0;
-	while (inputVideo.grab()) {
-		cv::Mat image;
-		inputVideo.retrieve(image);
-		cv::Mat rvec;
-		cv::Mat tvec;
-		
-		//STEP 3: ESTIMATE POSE
-		arucoPoseEstimation(image, target_id, tvec, rvec, camera_matrix, dist_coeffs);
-		std::cout << framecount << std::endl;
-		framecount++;
-		cv::imshow("out", image);
-    char key = (char) cv::waitKey(1);
-    if (key == 27)
-        break;
+	//~ // USING OPEN GL
+	
+	// init GLUT and create window
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
+	glutInitWindowPosition(100,100);
+	glutInitWindowSize(320,320);
+	glutCreateWindow("Lighthouse3D- GLUT Tutorial");
+
+	// register callbacks
+	glutDisplayFunc(renderScene);
+	glutReshapeFunc(changeSize);
+	glutIdleFunc(renderScene);
+
+	pthread_t thread[2];
+	int threadError;
+	int i=0;
+	// START GL THREAD
+	threadError = pthread_create(&thread[i], NULL, start_gl_main, (void *)i);
+	
+	if (threadError){
+		std::cout << "Error:unable to create thread," << threadError << std::endl;
+		exit(-1);
 	}
 	
-	return 0;
+	// START CV THREAD
+	i++;
+	threadError = pthread_create(&thread[i], NULL, start_cv_main, (void *)i);
+	
+	if (threadError){
+		std::cout << "Error:unable to create thread," << threadError << std::endl;
+		exit(-1);
+	}
+	
+	pthread_exit(NULL);
+	
+	// ARUCO MARKER DETECTION AND ANNOTATION WITHOUT OPENGL
+	//~ inputVideo.open(0);
+	//~ while (inputVideo.grab()) {
+		//~ cv::Mat image;
+		//~ cv::Mat rvec;
+		//~ cv::Mat tvec;
+		//~ inputVideo.retrieve(image);
+		//~ arucoPoseEstimation(image, target_id, tvec, rvec, camera_matrix, dist_coeffs, true);
+		//~ cv::imshow("out", image);
+		//~ char key = (char) cv::waitKey(1);
+	  //~ if (key == 27){
+			//~ break;
+			//~ inputVideo.release();
+		//~ }
+	//~ }
+	
+	//~ return 0;
 }
 

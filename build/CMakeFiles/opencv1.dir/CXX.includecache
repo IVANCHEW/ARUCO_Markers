@@ -25,6 +25,8 @@ time.h
 -
 stdio.h
 -
+thread
+-
 GLUT/glut.h
 -
 GL/glut.h
