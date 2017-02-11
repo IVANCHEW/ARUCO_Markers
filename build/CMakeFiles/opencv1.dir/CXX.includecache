@@ -6,6 +6,18 @@
 
 #IncludeRegexTransform: 
 
+/home/ivan/c++/openCV1/ConfigFile.cpp
+iostream
+-
+string
+-
+sstream
+-
+map
+-
+fstream
+-
+
 /home/ivan/c++/openCV1/opencv1.cpp
 opencv2/core/core.hpp
 -
@@ -31,6 +43,8 @@ math.h
 -
 cmath
 -
+ConfigFile.cpp
+/home/ivan/c++/openCV1/ConfigFile.cpp
 GLUT/glut.h
 -
 GL/glut.h
