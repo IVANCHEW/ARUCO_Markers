@@ -18,38 +18,77 @@
 #include <GL/glut.h>
 #endif
 
-// Create checkerboard texture 
-#define checkImageWidth 64
-#define checkImageHeight 64
-static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
+class DataManagement
+{
+	private:
+	
+		cv::Mat tvec;
+		cv::Mat rvec;
+		cv::Mat frame;
+		bool transformation_ready = false;
+		
+	public:
+	
+		void loadTransform(cv::Mat t, cv::Mat r);
+		void loadFrame(cv::Mat f);
+		
+		void getTransform(cv::Mat& t, cv::Mat& r);
+		void getFrame(cv::Mat& f);
+		
+		bool statusTransform();
+};
+
+void DataManagement::loadTransform(cv::Mat t, cv::Mat r){
+	tvec = t;
+	rvec = r;
+	transformation_ready = true;
+}
+
+void DataManagement::loadFrame(cv::Mat f){
+		frame = f.clone();
+}
+
+void DataManagement::getTransform(cv::Mat& t, cv::Mat& r){
+	t = tvec;
+	r = rvec;
+}
+
+void DataManagement::getFrame(cv::Mat& f){
+	f = frame.clone();
+}
+
+bool DataManagement::statusTransform(){
+	return transformation_ready;
+}
+
+// Data Management for threading
+DataManagement dm;
+
+// For Texturing
 static GLuint texName;
 cv::Mat mat_vertex;
 
-void makeCheckImage(void){
-	int i, j, c;
-	for (i = 0; i < checkImageHeight; i++) {
-		for (j = 0; j < checkImageWidth; j++) {
-		c = ((((i&0x8)==0)^((j&0x8))==0))*255;
-		checkImage[i][j][0] = (GLubyte) c;
-		checkImage[i][j][1] = (GLubyte) c;
-		checkImage[i][j][2] = (GLubyte) c;
-		checkImage[i][j][3] = (GLubyte) 255;
-		}
-	}
-}
-
-// Contextual Parameters
-int target_id = 1;
+// For Camera Parameters
 cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_250);
 cv::Mat camera_matrix;
 cv::Mat dist_coeffs;
-float angle = 0.0f;
-float triangle_size = 0.082;
-int framecount = 0;
-cv::Mat graphic_tvec;
-cv::Mat graphic_rvec;
-bool transformation_ready = false;
 std::string calibration_file = "calibration3";
+
+// For ARUCO
+int target_id = 1;
+float triangle_size = 0.082;
+float aruco_size = 0.082/2;
+
+// For Camera Frame Rendering
+int window_height = 480;
+int window_width = 840;
+float clipping_length;
+float focal_length;
+float frame_height;
+float frame_width;
+float camera_distance = 10;
+int framecount = 0;
+
 std::vector<std::vector<float> > vertex;
 std::vector<std::vector<float> > vertex_color;
 
@@ -126,7 +165,6 @@ void calibrateCamera(cv::Mat& camera_matrix, cv::Mat& dist_coeffs, bool show_boa
 		else{
 			std::cout << "Could not detect key points for frame: " << i << std::endl;
 		}
-
 	}
 	
 	std::cout << "Number of patterns found: " << image_points.size() << std::endl;
@@ -178,6 +216,7 @@ bool arucoPoseEstimation(cv::Mat& input_image, int id, cv::Mat& tvec, cv::Mat& r
 
 void changeSize(int w, int h) {
 
+	//std::cout << std::endl <<  "Size detected: " << w << " x " << h << std::endl;
 	// Prevent a divide by zero, when window is too short
 	// (you cant make a window of zero width).
 	if (h == 0)
@@ -199,24 +238,32 @@ void changeSize(int w, int h) {
 
 	// Get Back to the Modelview
 	glMatrixMode(GL_MODELVIEW);
+	
+	//std::cout << "Size checked" << std::endl;
+}
+
+void load_static_texture(void) {
+	std::cout << std::endl << std::endl << "Creating static mat texture" << std::endl;
+	mat_vertex = cv::imread("test/0.png");  
+	//~ std::cout << "Image size: " << mat_vertex.size() << std::endl;
+	
+	float width = mat_vertex.cols;
+	float height = mat_vertex.rows;
+	float aspect_ratio = width/height;
+	std::cout << aspect_ratio << std::endl;
+	clipping_length = (1.0 / 2.0) * ( 1.0 - 1.0/ aspect_ratio);
+	
+	float pixel_ratio = camera_distance/focal_length;
+	frame_height = window_height * pixel_ratio / 2;
+	frame_width = window_width * pixel_ratio / 2;
+	
+	std::cout << "Pixelratio: " << pixel_ratio <<  std::endl;
+	std::cout << "Frame: " << frame_height << " " << frame_width << std::endl;
 }
 
 void init_texture(void){
 	
 	std::cout << "Initiating Vertex" << std::endl;
-	
-	//~ glClearColor (0.0, 0.0, 0.0, 0.0);
-	//~ glShadeModel(GL_FLAT);
-	//~ glEnable(GL_DEPTH_TEST);
-	//~ makeCheckImage();
-	//~ glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	//~ glGenTextures(1, &texName);
-	//~ glBindTexture(GL_TEXTURE_2D, texName);
-	//~ glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S, GL_REPEAT);
-	//~ glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T, GL_REPEAT);
-	//~ glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-	//~ glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
-	//~ glTexImage2D(GL_TEXTURE_2D, 0,GL_RGBA, checkImageWidth,checkImageHeight,0, GL_RGBA, GL_UNSIGNED_BYTE,checkImage);
 	
 	cv::flip(mat_vertex, mat_vertex, 0);
 	glGenTextures(1, &texName);
@@ -226,19 +273,12 @@ void init_texture(void){
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-	glTexImage2D(GL_TEXTURE_2D,     // Type of texture
-								 0,                 // Pyramid level (for mip-mapping) - 0 is the top level
-								 GL_RGB,            // Internal colour format to convert to
-								 mat_vertex.cols,          // Image width  i.e. 640 for Kinect in standard mode
-								 mat_vertex.rows,          // Image height i.e. 480 for Kinect in standard mode
-								 0,                 // Border width in pixels (can either be 1 or 0)
-								 GL_BGR, // Input image format (i.e. GL_RGB, GL_RGBA, GL_BGR etc.)
-								 GL_UNSIGNED_BYTE,  // Image data type
-								 mat_vertex.ptr());        // The actual image data itself
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, mat_vertex.cols, mat_vertex.rows,  0, GL_BGR, GL_UNSIGNED_BYTE, mat_vertex.ptr());
 
 }
 
 void update_texture(void){
+	dm.getFrame(mat_vertex);
 	glTexImage2D(GL_TEXTURE_2D,     // Type of texture
 								 0,                 // Pyramid level (for mip-mapping) - 0 is the top level
 								 GL_RGB,            // Internal colour format to convert to
@@ -252,102 +292,128 @@ void update_texture(void){
 
 void renderScene(void) {
 	
-	// Texturing
-	update_texture();
-	
 	// Clear Color and Depth Buffers
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	// Reset transformations
 	glLoadIdentity();
+	
 	// Set the camera
-	gluLookAt(	0.0f, 0.0f, 10.0f,
+	gluLookAt(	0.0f, 0.0f, camera_distance,
 				0.0f, 0.0f,  0.0f,
 				0.0f, 1.0f,  0.0f);
-		
-	// Texturing
+					
+	// For Camera Background
+	update_texture();
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
 	glEnable(GL_TEXTURE_2D);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
 	glBindTexture(GL_TEXTURE_2D, texName);
 	
 	glBegin(GL_QUADS);
-		
+
 	 glTexCoord2f(0.0, 1.0);
-   glVertex3f(-5.0f, -5.0f, 0.0f);
-   glTexCoord2f(0.0, 0.0);
-   glVertex3f(-5.0f, 5.0f, 0.0f);
-   glTexCoord2f(1.0, 0.0);
-   glVertex3f(5.0f, 5.0f, 0.0f);
-   glTexCoord2f(1.0, 1.0);
-   glVertex3f(5.0f, -5.0f, 0.0f);
-  
-  glEnd();
-  
-  // Texturing
+	 glVertex3f(-frame_width, -frame_height, 0.0f);
+	 glTexCoord2f(0.0, 0.0);
+	 glVertex3f(-frame_width, frame_height, 0.0f);
+	 glTexCoord2f(1.0, 0.0);
+	 glVertex3f(frame_width, frame_height, 0.0f);
+	 glTexCoord2f(1.0, 1.0);
+	 glVertex3f(frame_width, -frame_height, 0.0f);
+
+	glEnd();
+	
 	glDisable(GL_TEXTURE_2D);
 	
-	//~ glRotatef(angle, 0.0f, 1.0f, 0.0f);
-	cv::Mat tvec;
-	cv::Mat rvec;
-	if (transformation_ready==true){		
-		tvec = graphic_tvec;
-		glTranslatef(tvec.at<double>(0), -tvec.at<double>(1), -tvec.at<double>(2));
-		
-		rvec = graphic_rvec;
+	// For Virtual Object Transformation
+	if (dm.statusTransform()){		
+		cv::Mat tvec;
+		cv::Mat rvec;
+		dm.getTransform(tvec, rvec);
+		glTranslatef(tvec.at<double>(0), -tvec.at<double>(1), -tvec.at<double>(2) + camera_distance);		
 		float a = rvec.at<double>(0);
 		float b = rvec.at<double>(1);
 		float c = rvec.at<double>(2);
 		float theta = sqrt(pow(a,2) + pow(b,2) + pow(c,2));
 		glRotatef(-theta*180/M_PI, -a/theta, b/theta, c/theta);
-		//~ std::cout << "Rotation angle: " << theta << std::endl;
 	}
+	
+	// For Virtual Object Rendering
 	int scount = 0;
 	
 	glBegin(GL_QUADS); // of the color cube
- 
-   //~ // Top-face
-   glColor3f(0.0f, 1.0f, 0.0f); // green
-   glVertex3f(1.0f, 1.0f, -1.0f);
-   glVertex3f(-1.0f, 1.0f, -1.0f);
-   glVertex3f(-1.0f, 1.0f, 1.0f);
-   glVertex3f(1.0f, 1.0f, 1.0f);
-   
-   //~ // Bottom-face
-   glColor3f(1.0f, 0.5f, 0.0f); // orange
-   glVertex3f(1.0f, -1.0f, 1.0f);
-   glVertex3f(-1.0f, -1.0f, 1.0f);
-   glVertex3f(-1.0f, -1.0f, -1.0f);
-   glVertex3f(1.0f, -1.0f, -1.0f);
- 
-   // Front-face
-   glColor3f(1.0f, 0.0f, 0.0f); // red
-   glVertex3f(1.0f, 1.0f, 1.0f);
-   glVertex3f(-1.0f, 1.0f, 1.0f);
-   glVertex3f(-1.0f, -1.0f, 1.0f);
-   glVertex3f(1.0f, -1.0f, 1.0f);
- 
-   // Back-face
-   glColor3f(1.0f, 1.0f, 0.0f); // yellow
-   glVertex3f(1.0f, -1.0f, -1.0f);
-   glVertex3f(-1.0f, -1.0f, -1.0f);
-   glVertex3f(-1.0f, 1.0f, -1.0f);
-   glVertex3f(1.0f, 1.0f, -1.0f);
- 
-   // Left-face
-   glColor3f(0.0f, 0.0f, 1.0f); // blue
-   glVertex3f(-1.0f, 1.0f, 1.0f);
-   glVertex3f(-1.0f, 1.0f, -1.0f);
-   glVertex3f(-1.0f, -1.0f, -1.0f);
-   glVertex3f(-1.0f, -1.0f, 1.0f);
- 
-   // Right-face
-   glColor3f(1.0f, 0.0f, 1.0f); // magenta
-   glVertex3f(1.0f, 1.0f, -1.0f);
-   glVertex3f(1.0f, 1.0f, 1.0f);
-   glVertex3f(1.0f, -1.0f, 1.0f);
-   glVertex3f(1.0f, -1.0f, -1.0f);
- 
+		glColor3f(0.0f, 1.0f, 0.0f); // green
+		glVertex3f(aruco_size, -aruco_size, 0);
+		glVertex3f(-aruco_size, -aruco_size, 0);
+	  glVertex3f(-aruco_size, aruco_size, 0);
+	  glVertex3f(aruco_size, aruco_size, 0);
+	  
+	  glColor3f(1.0f, 0.0f, 0.0f); // red
+		glVertex3f(aruco_size, aruco_size, 0);
+		glVertex3f(aruco_size, -aruco_size, 0);
+	  glVertex3f(aruco_size, -aruco_size, -aruco_size*2);
+	  glVertex3f(aruco_size, aruco_size, -aruco_size*2);
+	  
+	  glColor3f(0.0f, 0.0f, 1.0f); // blue
+		glVertex3f(aruco_size, aruco_size, -aruco_size*2);
+		glVertex3f(-aruco_size, aruco_size, -aruco_size*2);
+	  glVertex3f(-aruco_size, -aruco_size, -aruco_size*2);
+	  glVertex3f(aruco_size, -aruco_size, -aruco_size*2);
+	  
+	  glColor3f(1.0f, 0.5f, 0.0f); // orange
+		glVertex3f(-aruco_size, -aruco_size, -aruco_size*2);
+		glVertex3f(-aruco_size, aruco_size, -aruco_size*2);
+	  glVertex3f(-aruco_size, aruco_size, 0);
+	  glVertex3f(-aruco_size, -aruco_size, 0);
+	  
 	glEnd();
+	
+	//~ glBegin(GL_QUADS); // of the color cube
+ 
+   // Top-face
+   //~ glColor3f(0.0f, 1.0f, 0.0f); // green
+   //~ glVertex3f(1.0f, 1.0f, -1.0f);
+   //~ glVertex3f(-1.0f, 1.0f, -1.0f);
+   //~ glVertex3f(-1.0f, 1.0f, 1.0f);
+   //~ glVertex3f(1.0f, 1.0f, 1.0f);
+   
+   // Bottom-face
+   //~ glColor3f(1.0f, 0.5f, 0.0f); // orange
+   //~ glVertex3f(1.0f, -1.0f, 1.0f);
+   //~ glVertex3f(-1.0f, -1.0f, 1.0f);
+   //~ glVertex3f(-1.0f, -1.0f, -1.0f);
+   //~ glVertex3f(1.0f, -1.0f, -1.0f);
+ 
+   //~ // Front-face
+   //~ glColor3f(1.0f, 0.0f, 0.0f); // red
+   //~ glVertex3f(1.0f, 1.0f, 1.0f);
+   //~ glVertex3f(-1.0f, 1.0f, 1.0f);
+   //~ glVertex3f(-1.0f, -1.0f, 1.0f);
+   //~ glVertex3f(1.0f, -1.0f, 1.0f);
+ 
+   //~ // Back-face
+   //~ glColor3f(1.0f, 1.0f, 0.0f); // yellow
+   //~ glVertex3f(1.0f, -1.0f, -1.0f);
+   //~ glVertex3f(-1.0f, -1.0f, -1.0f);
+   //~ glVertex3f(-1.0f, 1.0f, -1.0f);
+   //~ glVertex3f(1.0f, 1.0f, -1.0f);
+ 
+   //~ // Left-face
+   //~ glColor3f(0.0f, 0.0f, 1.0f); // blue
+   //~ glVertex3f(-1.0f, 1.0f, 1.0f);
+   //~ glVertex3f(-1.0f, 1.0f, -1.0f);
+   //~ glVertex3f(-1.0f, -1.0f, -1.0f);
+   //~ glVertex3f(-1.0f, -1.0f, 1.0f);
+ 
+   //~ // Right-face
+   //~ glColor3f(1.0f, 0.0f, 1.0f); // magenta
+   //~ glVertex3f(1.0f, 1.0f, -1.0f);
+   //~ glVertex3f(1.0f, 1.0f, 1.0f);
+   //~ glVertex3f(1.0f, -1.0f, 1.0f);
+   //~ glVertex3f(1.0f, -1.0f, -1.0f);
+ 
+	//~ glEnd();
 
 	//~ glBegin(GL_TRIANGLES);
 		
@@ -426,7 +492,7 @@ void renderScene(void) {
 	
 }
 
-// Function copied from stackOverflow
+// Check Mat type (from stackOverflow)
 std::string type2str(int type) {
   std::string r;
 
@@ -450,35 +516,6 @@ std::string type2str(int type) {
   return r;
 }
 
-// Function not completed
-void mat_to_glubyte(cv::Mat& mat){
-	//~ cv::imshow("out", mat);
-	//~ cv::waitKey(0);
-		
-	std::cout << "Performing conversion" << std::endl;
-	std::string mat_type = type2str(mat.type());
-	std::cout << "Matrix type: " << mat_type << std::endl;
-	std::cout << "Matrix size: " << mat.size() << std::endl;
-	
-	for (int i = 0 ; i < mat.size().width ; i++){
-		for (int j = 0; j < mat.size().height ; j++){
-			std::cout << "i: " << i << " , j: " << j << std::endl;
-			std::cout << "test: " << mat.at<char>(0,0) << std::endl;
-			//~ mat_texutre[i][j][0] = (GLubyte) (mat.at<double>(i,j,0));
-			//~ mat_texutre[i][j][1] = (GLubyte) (mat.at<double>(i,j,1));
-			//~ mat_texutre[i][j][2] = (GLubyte) (mat.at<double>(i,j,2));
-			//~ mat_texutre[i][j][3] = (GLubyte) 255;
-		}
-	}
-}
-
-void load_static_texture(void) {
-	std::cout << std::endl << std::endl << "Creating static mat texture" << std::endl;
-	mat_vertex = cv::imread("test/0.png");  
-	std::cout << "Image size: " << mat_vertex.size() << std::endl;
-	//~ mat_to_glubyte(image_retrieve);
-}
-
 // THREAD FUNCTIONS
 void *start_gl_main(void *threadid){
 	long tid;
@@ -498,20 +535,14 @@ void *start_cv_main(void *threadid){
 		cv::Mat tvec;
 		inputVideo.retrieve(image);
 		
-		mat_vertex = image;
-		
 		marker_found = false;
 		marker_found = arucoPoseEstimation(image, target_id, tvec, rvec, camera_matrix, dist_coeffs, true);
+		dm.loadFrame(image);
 		if (marker_found==true){
 			//~ std::cout << "Marker found" << std::endl;
 			//~ std::cout << tvec << std::endl;
 			//~ std::cout << tvec.at<double>(0) << std::endl;
-			transformation_ready = true;
-			// Set global translation vector
-			graphic_tvec = tvec;
-			
-			// Set global rotation vector
-			graphic_rvec = rvec;
+			dm.loadTransform(tvec, rvec);			
 		}
 		//~ cv::imshow("out", image);
 		//~ char key = (char) cv::waitKey(1);
@@ -532,6 +563,8 @@ int main( int argc, char** argv )
 	camera_matrix.at<double>(0,0) = 1.0;
 	calibrateCamera(camera_matrix, dist_coeffs, false);
 	std::cout << "Calibration Matrix: " << std::endl << camera_matrix << std::endl;
+	focal_length = camera_matrix.at<double>(0,0);
+	std::cout << "Focal Length: " << focal_length << std::endl;
 	
 	// LOAD GL MODEL
 	// CODE FOR RENDERING MODEL FROM .TXT FILE
@@ -542,22 +575,21 @@ int main( int argc, char** argv )
 	//~ ConfigFile cf2("model/color.txt");
 	//~ cf2.getVertex(vertex_color);
 	
-	// MAT texturing test
-	load_static_texture();
-	
-	// init GLUT and create window
+	// GLUT INITIALISATION
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
 	glutInitWindowPosition(100,100);
-	glutInitWindowSize(320,320);
+	glutInitWindowSize(window_width,window_height);
 	glutCreateWindow("Lighthouse3D- GLUT Tutorial");
+	load_static_texture();
 	init_texture();
 	
-	// register callbacks
+	// GLUT CALLBACK REGISTRATION
 	glutDisplayFunc(renderScene);
 	glutReshapeFunc(changeSize);
 	glutIdleFunc(renderScene);
 
+	// THREAD INITIALISATION	
 	pthread_t thread[2];
 	int threadError;
 	int i=0;
