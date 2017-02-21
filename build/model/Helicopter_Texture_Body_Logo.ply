@@ -1,0 +1,18 @@
+ply
+format ascii 1.0
+comment Created by Blender 2.76 (sub 0) - www.blender.org, source file: 'Helicopter_Texture.blend1'
+element vertex 4
+property float x
+property float y
+property float z
+property float nx
+property float ny
+property float nz
+element face 1
+property list uchar uint vertex_indices
+end_header
+0.084174 -0.082143 0.100067 0.999939 0.007843 0.000000
+0.084455 -0.117906 0.102367 0.999939 0.007843 0.000000
+0.084455 -0.117906 0.077672 0.999939 0.007843 0.000000
+0.084174 -0.082142 0.077672 0.999939 0.007843 0.000000
+4 0 1 2 3
