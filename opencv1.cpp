@@ -80,7 +80,7 @@ bool debug_rendering_ = false;
 bool debug_calibration_ = true;
 
 // For Texturing
-static GLuint textures[2];
+GLuint textures[2];
 cv::Mat mat_vertex;
 cv::Mat obj_tex_mat;
 
@@ -115,17 +115,17 @@ float correct_increment = 0.001;
 
 // For Virtual Object Rendering
 bool extract_normals = true;
-//~ ConfigFile cf("model/model2.txt");
-//~ ConfigFile cf("model/simple_cube.txt");
-//~ ConfigFile cf("model/heli_1.txt");
-ConfigFile cf("model/heli_full.txt");
-
 //~ bool extract_normals = false;
-//~ ConfigFile cf("model/short_ws.txt");
+
 //~ int vertex_type = 3;
 int vertex_type = 4;
+
 bool extract_colors = false;
 
+//~ ConfigFile cf("model/model2.txt");
+//~ ConfigFile cf("model/simple_cube.txt");
+//~ ConfigFile cf("model/short_ws.txt");
+ConfigFile cf("model/heli_full.txt");
 std::vector<std::vector<float> > vertex;
 std::vector<std::vector<float> > normals;
 std::vector<std::vector<float> > vertex_color;
@@ -135,6 +135,15 @@ ConfigFile cf_texture("model/heli_full_texture.txt");
 std::vector<std::vector<float> > tex_vertex;
 std::vector<std::vector<float> > tex_normals;
 std::vector<std::vector<int> > tex_vertex_index;
+
+void rotateImage(cv::Mat& image, double angle){
+	cv::Mat R_Matrix;
+	cv::Point2f center;
+	center.y = image.rows/2;
+	center.x = image.cols/2;
+	R_Matrix = cv::getRotationMatrix2D(center, angle, 1.0);
+	cv::warpAffine(image, image, R_Matrix, image.size());
+}
 
 static void calcBoardCornerPositions(cv::Size boardSize, float squareSize, std::vector<cv::Point3f>& corners, std::string patternType){
     corners.clear();
@@ -339,9 +348,7 @@ void init_texture(void){
 	
 	std::cout << std::endl << "Initiating Vertex" << std::endl;
 	
-	std::cout << std::endl << std::endl << "Creating static mat texture" << std::endl;
 	mat_vertex = cv::imread("test/0.png");  
-	//~ std::cout << "Image size: " << mat_vertex.size() << std::endl;
 	
 	float width = mat_vertex.cols;
 	float height = mat_vertex.rows;
@@ -359,7 +366,6 @@ void init_texture(void){
 	cv::flip(mat_vertex, mat_vertex, 0);
 	glGenTextures(2, textures);
 	
-	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, textures[0]);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -368,24 +374,22 @@ void init_texture(void){
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, mat_vertex.cols, mat_vertex.rows,  0, GL_BGR, GL_UNSIGNED_BYTE, mat_vertex.ptr());
 	
 	// For object texture
-	//~ obj_tex_mat = cv::imread("texture/AFTC.jpg");
-	//~ glActiveTexture(GL_TEXTURE1);
-	//~ glBindTexture(GL_TEXTURE_2D, textures[1]);	
-	//~ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  //~ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  //~ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	//~ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-	//~ glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, obj_tex_mat.cols, obj_tex_mat.rows,  0, GL_BGR, GL_UNSIGNED_BYTE, obj_tex_mat.ptr());
+	obj_tex_mat = cv::imread("texture/AFTC.jpg");
+	rotateImage(obj_tex_mat, 90);
+	glBindTexture(GL_TEXTURE_2D, textures[1]);	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, obj_tex_mat.cols, obj_tex_mat.rows,  0, GL_BGR, GL_UNSIGNED_BYTE, obj_tex_mat.ptr());
 	
 }
 
 void update_texture(void){
 	frame_ready = dm.getFrame(mat_vertex);
 	if (frame_ready){
-		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, textures[0]);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, mat_vertex.cols, mat_vertex.rows,  0, GL_BGR, GL_UNSIGNED_BYTE, mat_vertex.ptr());
-		//~ glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, window_width, window_height,  0, GL_BGR, GL_UNSIGNED_BYTE, mat_vertex.ptr());
 	}
 }
 
@@ -420,10 +424,8 @@ void renderScene(void) {
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
 	glEnable(GL_TEXTURE_2D);
-	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, textures[0]);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
-	//~ glBindTexture(GL_TEXTURE_2D, texName);
 	glBegin(GL_QUADS);
 
 	 glTexCoord2f(0.0, 1.0);
@@ -504,30 +506,30 @@ void renderScene(void) {
 		}
 	glEnd();
 	
-	//~ // For mode texture
-	//~ glEnable(GL_TEXTURE_2D);
-	//~ glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
-	//~ glActiveTexture(GL_TEXTURE0);
-	//~ glBindTexture(GL_TEXTURE_2D, textures[0]);	
+	// For mode texture
+	glEnable(GL_TEXTURE_2D);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+	glBindTexture(GL_TEXTURE_2D, textures[1]);	
 	
-	//~ glBegin(GL_QUADS);
+	glBegin(GL_QUADS);
 
-	 //~ glTexCoord2f(0.0, 1.0);
-	 //~ glNormal3f(tex_normals[tex_vertex_index[0][0]][0],tex_normals[tex_vertex_index[0][0]][1],tex_normals[tex_vertex_index[0][0]][2]);
-	 //~ glVertex3f(tex_vertex[tex_vertex_index[0][0]][0],tex_vertex[tex_vertex_index[0][0]][1], tex_vertex[tex_vertex_index[0][0]][2]);
-	 //~ glTexCoord2f(0.0, 0.0);
-	 //~ glNormal3f(tex_normals[tex_vertex_index[0][1]][0],tex_normals[tex_vertex_index[0][1]][1],tex_normals[tex_vertex_index[0][1]][2]);
-	 //~ glVertex3f(tex_vertex[tex_vertex_index[0][1]][0],tex_vertex[tex_vertex_index[0][1]][1], tex_vertex[tex_vertex_index[0][1]][2]);
-	 //~ glTexCoord2f(1.0, 0.0);
-	 //~ glNormal3f(tex_normals[tex_vertex_index[0][2]][0],tex_normals[tex_vertex_index[0][2]][1],tex_normals[tex_vertex_index[0][2]][2]);
-	 //~ glVertex3f(tex_vertex[tex_vertex_index[0][2]][0],tex_vertex[tex_vertex_index[0][2]][1], tex_vertex[tex_vertex_index[0][2]][2]);
-	 //~ glTexCoord2f(1.0, 1.0);
-	 //~ glNormal3f(tex_normals[tex_vertex_index[0][3]][0],tex_normals[tex_vertex_index[0][3]][1],tex_normals[tex_vertex_index[0][3]][2]);
-	 //~ glVertex3f(tex_vertex[tex_vertex_index[0][3]][0],tex_vertex[tex_vertex_index[0][3]][1], tex_vertex[tex_vertex_index[0][3]][2]);
+	 glTexCoord2f(0.0, 1.0);
+	 glNormal3f(tex_normals[tex_vertex_index[0][0]][0],tex_normals[tex_vertex_index[0][0]][1],tex_normals[tex_vertex_index[0][0]][2]);
+	 glVertex3f(tex_vertex[tex_vertex_index[0][0]][0],tex_vertex[tex_vertex_index[0][0]][1], tex_vertex[tex_vertex_index[0][0]][2]);
+	 glTexCoord2f(0.0, 0.0);
+	 glNormal3f(tex_normals[tex_vertex_index[0][1]][0],tex_normals[tex_vertex_index[0][1]][1],tex_normals[tex_vertex_index[0][1]][2]);
+	 glVertex3f(tex_vertex[tex_vertex_index[0][1]][0],tex_vertex[tex_vertex_index[0][1]][1], tex_vertex[tex_vertex_index[0][1]][2]);
+	 glTexCoord2f(1.0, 0.0);
+	 glNormal3f(tex_normals[tex_vertex_index[0][2]][0],tex_normals[tex_vertex_index[0][2]][1],tex_normals[tex_vertex_index[0][2]][2]);
+	 glVertex3f(tex_vertex[tex_vertex_index[0][2]][0],tex_vertex[tex_vertex_index[0][2]][1], tex_vertex[tex_vertex_index[0][2]][2]);
+	 glTexCoord2f(1.0, 1.0);
+	 glNormal3f(tex_normals[tex_vertex_index[0][3]][0],tex_normals[tex_vertex_index[0][3]][1],tex_normals[tex_vertex_index[0][3]][2]);
+	 glVertex3f(tex_vertex[tex_vertex_index[0][3]][0],tex_vertex[tex_vertex_index[0][3]][1], tex_vertex[tex_vertex_index[0][3]][2]);
 
-	//~ glEnd();
+	glEnd();
 	
-	//~ glDisable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, 0); 
+	glDisable(GL_TEXTURE_2D);
 	
 	// For disabling lighting
 	glDisable(GL_COLOR_MATERIAL);
