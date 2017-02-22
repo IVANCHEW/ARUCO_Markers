@@ -137,12 +137,14 @@ std::vector<std::vector<float> > tex_normals;
 std::vector<std::vector<int> > tex_vertex_index;
 
 void rotateImage(cv::Mat& image, double angle){
+	std::cout << "Original Image size: " << image.size() << std::endl;
 	cv::Mat R_Matrix;
 	cv::Point2f center;
 	center.y = image.rows/2;
 	center.x = image.cols/2;
 	R_Matrix = cv::getRotationMatrix2D(center, angle, 1.0);
 	cv::warpAffine(image, image, R_Matrix, image.size());
+	std::cout << "Transformed Image size: " << image.size() << std::endl;
 }
 
 static void calcBoardCornerPositions(cv::Size boardSize, float squareSize, std::vector<cv::Point3f>& corners, std::string patternType){
@@ -374,14 +376,14 @@ void init_texture(void){
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, mat_vertex.cols, mat_vertex.rows,  0, GL_BGR, GL_UNSIGNED_BYTE, mat_vertex.ptr());
 	
 	// For object texture
-	obj_tex_mat = cv::imread("texture/AFTC.jpg");
-	rotateImage(obj_tex_mat, 90);
+	obj_tex_mat = cv::imread("texture/AFTC.png", -1);
+	//~ rotateImage(obj_tex_mat, 90);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);	
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, obj_tex_mat.cols, obj_tex_mat.rows,  0, GL_BGR, GL_UNSIGNED_BYTE, obj_tex_mat.ptr());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, obj_tex_mat.cols, obj_tex_mat.rows,  0, GL_BGRA, GL_UNSIGNED_BYTE, obj_tex_mat.ptr());
 	
 }
 
@@ -425,7 +427,7 @@ void renderScene(void) {
 	glDepthFunc(GL_LESS);
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, textures[0]);
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+	//~ glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
 	glBegin(GL_QUADS);
 
 	 glTexCoord2f(0.0, 1.0);
@@ -438,6 +440,8 @@ void renderScene(void) {
 	 glVertex3f(frame_width, -frame_height, camera_distance);
 
 	glEnd();
+	
+	glBindTexture(GL_TEXTURE_2D, 0); 
 	glDisable(GL_TEXTURE_2D);
 	
 	// For Virtual Object Transformation
@@ -506,23 +510,33 @@ void renderScene(void) {
 		}
 	glEnd();
 	
-	// For mode texture
+	// For disabling lighting
+	glDisable(GL_COLOR_MATERIAL);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_LIGHT0);
+	
+	// For logo texture
 	glEnable(GL_TEXTURE_2D);
-	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+	
+	//~ glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+	//~ glTexEnvf(GL_TEXTURE_ENV, GL_SRC1_ALPHA, GL_DECAL);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);	
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	
 	
 	glBegin(GL_QUADS);
 
-	 glTexCoord2f(0.0, 1.0);
+	 glTexCoord2f(0.0, 0.0);
 	 glNormal3f(tex_normals[tex_vertex_index[0][0]][0],tex_normals[tex_vertex_index[0][0]][1],tex_normals[tex_vertex_index[0][0]][2]);
 	 glVertex3f(tex_vertex[tex_vertex_index[0][0]][0],tex_vertex[tex_vertex_index[0][0]][1], tex_vertex[tex_vertex_index[0][0]][2]);
-	 glTexCoord2f(0.0, 0.0);
+	 glTexCoord2f(1.0, 0.0);
 	 glNormal3f(tex_normals[tex_vertex_index[0][1]][0],tex_normals[tex_vertex_index[0][1]][1],tex_normals[tex_vertex_index[0][1]][2]);
 	 glVertex3f(tex_vertex[tex_vertex_index[0][1]][0],tex_vertex[tex_vertex_index[0][1]][1], tex_vertex[tex_vertex_index[0][1]][2]);
-	 glTexCoord2f(1.0, 0.0);
+	 glTexCoord2f(1.0, 1.0);
 	 glNormal3f(tex_normals[tex_vertex_index[0][2]][0],tex_normals[tex_vertex_index[0][2]][1],tex_normals[tex_vertex_index[0][2]][2]);
 	 glVertex3f(tex_vertex[tex_vertex_index[0][2]][0],tex_vertex[tex_vertex_index[0][2]][1], tex_vertex[tex_vertex_index[0][2]][2]);
-	 glTexCoord2f(1.0, 1.0);
+	 glTexCoord2f(0.0, 1.0);
 	 glNormal3f(tex_normals[tex_vertex_index[0][3]][0],tex_normals[tex_vertex_index[0][3]][1],tex_normals[tex_vertex_index[0][3]][2]);
 	 glVertex3f(tex_vertex[tex_vertex_index[0][3]][0],tex_vertex[tex_vertex_index[0][3]][1], tex_vertex[tex_vertex_index[0][3]][2]);
 
@@ -530,11 +544,7 @@ void renderScene(void) {
 	
 	glBindTexture(GL_TEXTURE_2D, 0); 
 	glDisable(GL_TEXTURE_2D);
-	
-	// For disabling lighting
-	glDisable(GL_COLOR_MATERIAL);
-	glDisable(GL_LIGHTING);
-	glDisable(GL_LIGHT0);
+	glDisable(GL_BLEND);
 	
 	glutSwapBuffers();
 	
