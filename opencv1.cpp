@@ -427,7 +427,7 @@ void renderScene(void) {
 	glDepthFunc(GL_LESS);
 	glEnable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, textures[0]);
-	//~ glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+
 	glBegin(GL_QUADS);
 
 	 glTexCoord2f(0.0, 1.0);
@@ -466,7 +466,7 @@ void renderScene(void) {
 	
 	//~ // For Virtual Object Rendering
 	
-	//~ // For 4-sided cube
+	// For 4-sided cube
 	//~ glBegin(GL_QUADS); // of the color cube
 		//~ glColor3f(0.0f, 1.0f, 0.0f); // green
 		//~ glVertex3f(aruco_size, -aruco_size, 0);
@@ -492,6 +492,8 @@ void renderScene(void) {
 	  //~ glVertex3f(-aruco_size, aruco_size, 0);
 	  //~ glVertex3f(-aruco_size, -aruco_size, 0);
 	//~ glEnd();
+	
+	//~ glColor3f(1.0f, 1.0f, 1.0f);
 
 	// For model rendered from .txt file
 	int scount = 0;
@@ -517,13 +519,10 @@ void renderScene(void) {
 	
 	// For logo texture
 	glEnable(GL_TEXTURE_2D);
-	
-	//~ glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
-	//~ glTexEnvf(GL_TEXTURE_ENV, GL_SRC1_ALPHA, GL_DECAL);
+
 	glBindTexture(GL_TEXTURE_2D, textures[1]);	
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	
 	
 	glBegin(GL_QUADS);
 
